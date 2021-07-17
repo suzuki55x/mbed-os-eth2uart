@@ -50,7 +50,8 @@ int main()
     DigitalOut led2(LED2);// error
     DigitalOut led3(LED3);// UART RX WAIT
     DigitalOut led4(LED4);// power
-    DigitalOut uart_valid(P2_13);
+    DigitalOut uart_valid(P2_13);// uart
+    DigitalIn m5_sleep(P0_28);// sleep
 
     led = LED_OFF;
     led2 = LED_OFF;
@@ -155,6 +156,13 @@ int main()
             dbgmsg((char *)"ERROR: M5Atom Not Found\n");
             return -1;
         }
+        uart_valid = 0;
+        wait_us(1000);
+        dbgmsg((char *)"Sleep...\n");
+        while(m5_sleep == 0) {
+            sleep();
+        }
+        dbgmsg((char *)"WakeUp!!!\n");
         // M5から受信
         led3 = LED_ON;
         cnt = 0;
