@@ -3,7 +3,7 @@
 ## Environment
 
 - [mbed studio](https://os.mbed.com/studio/)
-- m5-ulp-uart v2以上 & M5Atom Lite
+- m5-ulp-i2c v2以上 & M5Atom Lite
 - udp送受信を行えるツール
 - シリアル通信クライアント(デバッグ用)
 
