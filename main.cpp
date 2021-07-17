@@ -87,7 +87,7 @@ int main()
     sockAddr.set_ip_address(DST_IP);
     sockAddr.set_port(DST_PORT);
 
-    led = LED_ON;   
+  
 
     // UDP send test
     char out_buffer[] = "test data";
@@ -100,8 +100,6 @@ int main()
     dbgmsg(out_buffer);
     dbgmsg((char *)"\n");
 
-    led = LED_OFF;
-
     char* sense_interval;
     int sense_cnt = 1;// 測定回数
     char* sense_cnt_char;
@@ -109,37 +107,43 @@ int main()
     char uart_rx_buffer[UART_RX_BUF_SIZE];
     char buf[1] = {'\0'};
     int cnt;
+    char in_data[256];
+    char in_data_cpy[256];
 
     // 以下無限ループ
     while (true) {
-        led3 = LED_ON;
-        dbgmsg((char *)"UDP receive waiting...\n");
+        // UDP文字列が正しくなるまでループ
+        while(true) {
+ 
+            dbgmsg((char *)"UDP receive waiting...\n");
 
-        // UDP受信。受信するまで待つ(ブロッキング)
-        char in_data[256];
-        char in_data_cpy[256];
-        sock.recvfrom(&sockAddr, &in_data, sizeof(in_data));
-        dbgmsg((char *)"UDP RECV DONE!: ");
-        dbgmsg((char *)in_data);
-        dbgmsg((char *)"\n");
+            // UDP受信。受信するまで待つ(ブロッキング)
+            led = LED_ON; 
+            sock.recvfrom(&sockAddr, &in_data, sizeof(in_data));
+            led = LED_OFF;
+            dbgmsg((char *)"UDP RECV DONE!: ");
+            dbgmsg((char *)in_data);
+            dbgmsg((char *)"\n");
 
-        strcpy(in_data_cpy, in_data);
+            strcpy(in_data_cpy, in_data);
 
-        // 測定回数を取得
-        sense_interval = strtok(in_data_cpy, " ");
-        dbgmsg(sense_interval);
-        if (sense_interval!=NULL) {
+            // 測定回数を取得
+            sense_interval = strtok(in_data_cpy, " ");
+            dbgmsg(sense_interval);
+            if (sense_interval!=NULL) {
+ 
+                sense_cnt_char = strtok(NULL, " ");
+                if (sense_cnt_char!=NULL) {
+                    sense_cnt = atoi(sense_cnt_char);
 
-            sense_cnt_char = strtok(NULL, " ");
-
-            sense_cnt = atoi(sense_cnt_char);
-
-            if(sense_cnt < 1) {
-                sense_cnt = 1;
-            }else if(sense_cnt > 60) {
-                sense_cnt = 60;
+                    if(sense_cnt < 1) {
+                        sense_cnt = 1;
+                    }else if(sense_cnt > 120) {
+                        sense_cnt = 120;
+                    }
+                    break;
+                }
             }
-
         }
 
         // UDP受信結果をM5に送信
@@ -152,6 +156,7 @@ int main()
             return -1;
         }
         // M5から受信
+        led3 = LED_ON;
         cnt = 0;
         uart_valid = 1;
         wait_us(10000);
