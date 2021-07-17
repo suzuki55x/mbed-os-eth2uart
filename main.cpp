@@ -2,6 +2,8 @@
  * Copyright (c) 2019 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  */
+#include <cstring>
+#define DEBUG
 
 #include "mbed.h"
 #include "EthernetInterface.h"
@@ -11,7 +13,6 @@
 #define BLINKING_RATE     500ms
 #define LED_ON 0
 #define LED_OFF 1
-
 
 // UDP Setting
 #define SRC_IP "172.10.0.10"
@@ -24,14 +25,20 @@
 // Network Interface
 EthernetInterface eth;
 
-// Serial
-BufferedSerial uart0(P2_0, P2_1);
+// Serial Setting
+BufferedSerial uart0(P2_0, P2_1);// debug
+BufferedSerial uart1(P0_0, P0_1, 9600);// M5Atom
+
+#define UART_RX_BUF_SIZE (64)
+
 
 static void dbgmsg(char *msg, size_t len = 0) {
+#ifdef DEBUG
     if (len < 1) {
         len = strlen(msg);
     }
     uart0.write(msg, strlen(msg));
+#endif
 }
 
 int main()
@@ -39,15 +46,17 @@ int main()
     dbgmsg((char *)"start!\n");
 
     // Initialise the digital pin LED1 as an output
-    DigitalOut led(LED1);// end
+    DigitalOut led(LED1);// UDP RX WAIT
     DigitalOut led2(LED2);// error
-    DigitalOut led3(LED3);// udp done
-    DigitalOut led4(LED4);// start
+    DigitalOut led3(LED3);// UART RX WAIT
+    DigitalOut led4(LED4);// power
+    DigitalOut uart_valid(P2_13);
 
     led = LED_OFF;
     led2 = LED_OFF;
     led3 = LED_OFF;
     led4 = LED_ON;
+    uart_valid = 1;
 
     //uart0.write("test\n", strlen("test\n"));
 
@@ -69,8 +78,6 @@ int main()
     dbgmsg((char *)sockAddr.get_ip_address());
     dbgmsg((char *)"\n");
  
-    led3 = LED_ON;
-
     // UDPソケットを開く
     UDPSocket sock;
     sock.open(&eth);
@@ -79,23 +86,158 @@ int main()
     //eth.gethostbyname("host", &sockAddr);
     sockAddr.set_ip_address(DST_IP);
     sockAddr.set_port(DST_PORT);
+
     led = LED_ON;   
+
+    // UDP send test
     char out_buffer[] = "test data";
     if (0 > sock.sendto(sockAddr, out_buffer, sizeof(out_buffer))) {
         led2 = LED_ON;
         dbgmsg((char *)"Error sending data\n");
         return -1;
     }
-    dbgmsg((char *)"send done\n");
+    dbgmsg((char *)"UDP SEND DONE: ");
+    dbgmsg(out_buffer);
+    dbgmsg((char *)"\n");
 
-    char in_data[256];
-    sock.recvfrom(&sockAddr, &in_data, sizeof(in_data));
-    dbgmsg((char *)"UDP RECV---\n");
-    dbgmsg((char *)in_data);
+    led = LED_OFF;
 
+    char* sense_interval;
+    int sense_cnt = 1;// 測定回数
+    char* sense_cnt_char;
+    int data_cnt = 0;// 受信データ数
+    char uart_rx_buffer[UART_RX_BUF_SIZE];
+    char buf[1] = {'\0'};
+    int cnt;
+
+    // 以下無限ループ
     while (true) {
-        led = !led;
-        ThisThread::sleep_for(BLINKING_RATE);
+        led3 = LED_ON;
+        dbgmsg((char *)"UDP receive waiting...\n");
+
+        // UDP受信。受信するまで待つ(ブロッキング)
+        char in_data[256];
+        char in_data_cpy[256];
+        sock.recvfrom(&sockAddr, &in_data, sizeof(in_data));
+        dbgmsg((char *)"UDP RECV DONE!: ");
+        dbgmsg((char *)in_data);
+        dbgmsg((char *)"\n");
+
+        strcpy(in_data_cpy, in_data);
+
+        // 測定回数を取得
+        sense_interval = strtok(in_data_cpy, " ");
+        dbgmsg(sense_interval);
+        if (sense_interval!=NULL) {
+
+            sense_cnt_char = strtok(NULL, " ");
+
+            sense_cnt = atoi(sense_cnt_char);
+
+            if(sense_cnt < 1) {
+                sense_cnt = 1;
+            }else if(sense_cnt > 60) {
+                sense_cnt = 60;
+            }
+
+        }
+
+        // UDP受信結果をM5に送信
+        if (uart1.writable()) {
+            uart1.write(in_data, strlen(in_data));
+            dbgmsg((char *)"uart to m5 send\n");
+        } else {
+            led2 = LED_ON;
+            dbgmsg((char *)"ERROR: M5Atom Not Found\n");
+            return -1;
+        }
+        // M5から受信
+        cnt = 0;
+        uart_valid = 1;
+        wait_us(10000);
+        while(true) {
+
+            if (uart1.readable()) {
+                // uart flush delay
+                //ThisThread::sleep_for(100);
+                
+                uart1.read(buf, 1);
+
+                //uart_valid = 0;
+
+                //dbgmsg((char *)"read: ");
+                //if(*buf!='\0') {
+                // 力技で固定文字しかとらなくしてしまう
+                if(
+                    *buf == 't' ||
+                    *buf == 'e' ||
+                    *buf == 'm' ||
+                    *buf == 'p' ||
+                    *buf == 'h' ||
+                    *buf == 'u' ||
+                    *buf == 'm' ||
+                    *buf == 'i' ||
+                    *buf == 'o' ||
+                    *buf == 's' ||
+                    *buf == ':' ||
+                    *buf == ' ' ||
+                    *buf == ',' ||
+                    *buf == '.' ||
+                    *buf == '0' ||
+                    *buf == '1' ||
+                    *buf == '2' ||
+                    *buf == '3' ||
+                    *buf == '4' ||
+                    *buf == '5' ||
+                    *buf == '6' ||
+                    *buf == '7' ||
+                    *buf == '8' ||
+                    *buf == '9'
+                ) {
+                    // 1文字目が化けることがあるので対策
+                    if ((*buf == 't' && cnt==0) || (cnt>0)) {
+                        uart_rx_buffer[cnt] = *buf;
+                        //dbgmsg((char *)uart_rx_buffer);
+                        //dbgmsg((char *)"\n");
+                        cnt++;
+                    } else if(cnt>0){
+
+                    }
+                }
+                // 改行を受けたら1データ
+                if((char)*buf=='\n'||(char)*buf=='\r') {
+                    dbgmsg((char *)"Rx Done!!\n");
+                    uart_rx_buffer[cnt] = '\0';
+                    cnt++;
+                    // M5からの受信が来たらUDP送信
+                    if (0 > sock.sendto(sockAddr, uart_rx_buffer, sizeof(uart_rx_buffer))) {
+                        led2 = LED_ON;
+                        dbgmsg((char *)"Error sending data\n");
+                        return -1;
+                    }
+                    dbgmsg((char *)"UDP SEND DONE: ");
+                    dbgmsg(uart_rx_buffer);
+                    dbgmsg((char *)"\n");
+
+                    cnt = 0;
+                    data_cnt++;
+                    if(data_cnt >= sense_cnt) {
+                        led3 = LED_OFF;
+                        uart_valid = 1;
+                        data_cnt = 0;
+                        wait_us(10000);
+                        break;
+                    }
+                }
+                buf[0] = '\0';
+            }
+        }
+
+
+        // buffer clear
+        //for(int i=0; i<UART_RX_BUF_SIZE; i++) {
+        //    uart_rx_buffer[i] = '\0';
+        //}
     }
 
     sock.close();
