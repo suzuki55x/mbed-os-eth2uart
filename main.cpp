@@ -2,12 +2,18 @@
  * Copyright (c) 2019 ARM Limited
  * SPDX-License-Identifier: Apache-2.0
  */
+#include "DigitalOut.h"
+#include "PinNames.h"
 #include <cstring>
 #define DEBUG
 
 #include "mbed.h"
 #include "EthernetInterface.h"
 #include <cstdio>
+
+// GPIO state
+#define HIGH 1
+#define LOW 0
 
 // Blinking rate in milliseconds
 #define BLINKING_RATE     500ms
@@ -22,12 +28,16 @@
 #define SRC_PORT 59452
 #define DST_PORT 50001
 
+// SPI interface
+SPI spi(SPI_MOSI, SPI_MISO, SPI_SCK);
+DigitalOut cs(SPI_CS);
+
 // Network Interface
 EthernetInterface eth;
 
 // Serial Setting
-BufferedSerial uart0(P2_0, P2_1);// debug
-BufferedSerial uart1(P0_0, P0_1, 9600);// M5Atom
+BufferedSerial uart0(CONSOLE_TX, CONSOLE_RX);// debug
+BufferedSerial uart1(D2, D3, 9600);// M5Atom
 
 #define UART_RX_BUF_SIZE (64)
 
@@ -50,14 +60,25 @@ int main()
     DigitalOut led2(LED2);// error
     DigitalOut led3(LED3);// UART RX WAIT
     DigitalOut led4(LED4);// power
-    DigitalOut uart_valid(P2_13);// uart
-    DigitalIn m5_sleep(P0_28);// sleep
+    DigitalOut uart_valid(D0);// uart
+    DigitalIn m5_sleep(D1);// sleep
 
     led = LED_OFF;
     led2 = LED_OFF;
     led3 = LED_OFF;
     led4 = LED_ON;
     uart_valid = 1;
+
+    spi.format(8, 3);
+    spi.frequency(1000000);// 1MHz
+
+    cs = LOW;// selected
+
+    spi.write(0x8F);// read command(for example)
+
+    int reg = spi.write(0x00);// write dummy bite and read register result
+
+    cs = HIGH;// deselect
 
     //uart0.write("test\n", strlen("test\n"));
 
